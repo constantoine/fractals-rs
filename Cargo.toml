@@ -1,0 +1,14 @@
+[package]
+name = "fractal"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+foot-gun = "0.1.0"
+gl = "0.14.0"
+
+[dependencies.sdl2]
+version = "0.36"
+features = ["gfx"]
