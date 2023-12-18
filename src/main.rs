@@ -32,27 +32,26 @@ impl Complex {
     }
 }
 
-fn compute_iterations(mut z: Complex, constant: Complex, max_iterations: i32) -> i32 {
+fn compute_iterations(mut z: Complex, constant: Complex, max_iterations: i32) -> (Complex, i32) {
     let mut current_iteration: i32 = 0;
     while z.modn(2) < 16.0 && current_iteration < max_iterations {
         z = z.compute_next(constant);
         current_iteration += 1;
     }
 
-    current_iteration
+    (z, current_iteration)
 }
 
 fn get_color_smooth(point: Complex, iteration: i32) -> Color {
-    /*
+
     let size: f64 = point.modn(2);
-
     let smoothed: f64 = iteration as f64 - size.log2().log2() + 4.0;
-    */
 
+    /*
     let m = point.modn(2).sqrt();
     let smoothed: f64 = iteration as f64
         - (core::cmp::max_by(1.0, m.log2(), |a, b| a.partial_cmp(b).unwrap()).log2());
-
+    */
     /*
     Color {
         r: (0.5 + 0.5 * (3.0 + smoothed * 0.15 + 0.0).cos()* 255.0) as u8,
@@ -62,9 +61,9 @@ fn get_color_smooth(point: Complex, iteration: i32) -> Color {
     }
      */
     Color {
-        r: (256.0 - 128.0 * (3.0 + smoothed * 0.15 + 0.0).cos()) as u8,
-        g: (256.0 - 128.0 * (3.0 + smoothed * 0.15 + 0.6).cos()) as u8,
-        b: (256.0 - 128.0 * (3.0 + smoothed * 0.15 + 1.0).cos()) as u8,
+        r: (128.0 + 128.0 * (3.0 + smoothed * 0.15 + 0.0).cos()) as u8,
+        g: (128.0 + 128.0 * (3.0 + smoothed * 0.15 + 0.6).cos()) as u8,
+        b: (128.0 + 128.0 * (3.0 + smoothed * 0.15 + 1.0).cos()) as u8,
         a: 0,
     }
 }
@@ -102,8 +101,15 @@ fn render(
                 imaginary: (y - y_size / 2) as f64 * scale,
             };
 
-            let iteration = compute_iterations(current, current, max_iterations);
-            let color = get_color_smooth(current, iteration);
+            let (end_point, iteration) = compute_iterations(current, current, max_iterations);
+            let color;
+            if iteration == max_iterations {
+                color = Color {r : 0, b: 0, g: 0, a:0};
+            }
+            else {
+                color = get_color_smooth(end_point, iteration);
+            }
+
             // let color = get_color(iteration, max_iterations);
 
             canvas.set_draw_color(color);
