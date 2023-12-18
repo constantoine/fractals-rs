@@ -43,7 +43,6 @@ fn compute_iterations(mut z: Complex, constant: Complex, max_iterations: i32) ->
 }
 
 fn get_color_smooth(point: Complex, iteration: i32) -> Color {
-
     let size: f64 = point.modn(2);
     let smoothed: f64 = iteration as f64 - size.log2().log2() + 4.0;
 
@@ -68,45 +67,32 @@ fn get_color_smooth(point: Complex, iteration: i32) -> Color {
     }
 }
 
-fn get_color(value: i32, max_value: i32) -> Color {
-    let gray: u8 = ((value * 255) / max_value).try_into().expect(&format!(
-        "value({:?}) * 255 ({:?}) larger than max_value ({:?})",
-        value,
-        value * 255,
-        max_value
-    ));
-    Color {
-        r: gray,
-        g: gray,
-        b: gray,
-        a: 0,
-    }
-}
-
 fn render(
     x_size: i32,
     y_size: i32,
-    constant: Complex,
+    scale: f64,
     max_iterations: i32,
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
 ) {
-    let mut colors: Vec<Vec<Point>> =
-        vec![vec![Point::new(0, 0); y_size as usize * x_size as usize]; 256];
     canvas.clear();
-    let scale: f64 = 1.0 / (y_size as f64 / 2.0);
+    let scale: f64 = 1.0 / (y_size as f64 / 2.0) * scale;
     for y in 0..y_size {
         for x in 0..x_size {
             let current: Complex = Complex {
                 real: (x - x_size / 2) as f64 * scale,
-                imaginary: (y - y_size / 2) as f64 * scale,
+                imaginary: (y - y_size / 2) as f64 * scale + 1.0,
             };
 
             let (end_point, iteration) = compute_iterations(current, current, max_iterations);
             let color;
             if iteration == max_iterations {
-                color = Color {r : 0, b: 0, g: 0, a:0};
-            }
-            else {
+                color = Color {
+                    r: 0,
+                    b: 0,
+                    g: 0,
+                    a: 0,
+                };
+            } else {
                 color = get_color_smooth(end_point, iteration);
             }
 
@@ -139,23 +125,13 @@ fn main() {
         .event_pump()
         .expect("Could not start event pump");
 
-    let sets = vec![
-        Complex {
-            real: -0.8,
-            imaginary: 0.156,
-        },
-        Complex {
-            real: -0.1528,
-            imaginary: 1.0397,
-        },
-    ];
-
     let mut fps_manager: FPSManager = FPSManager::new();
 
-    let mut current_set = 0;
+    let mut scale: f64 = 1.0;
+    let mut frame: i32 = 1;
 
     fps_manager
-        .set_framerate(24)
+        .set_framerate(60)
         .expect("could not set framerate");
 
     'running: loop {
@@ -166,23 +142,25 @@ fn main() {
                     keycode: Some(Keycode::Escape),
                     ..
                 } => break 'running,
-                Event::KeyDown {
-                    keycode: Some(Keycode::Right),
-                    ..
-                } => current_set = (current_set + 1) % sets.len(),
                 _ => {}
             }
         }
+        if frame == 3460 {
+            break 'running;
+        }
         let start = Instant::now();
-        render(
-            900,
-            900,
-            *sets.get(current_set).expect("set not found"),
-            500,
-            &mut canvas,
-        );
+        render(900, 900, scale, 500, &mut canvas);
+        canvas
+            .window()
+            .surface(&event_pump)
+            .unwrap()
+            .save_bmp(format!("./{:?}.bmp", frame))
+            .expect("TODO: panic message");
         let duration: Duration = start.elapsed();
-        println!("Rendering time: {:?}", duration);
+        println!("Rendering time: {:?}; frame: {:?}", duration, frame);
         fps_manager.delay();
+
+        scale *= 0.99;
+        frame += 1;
     }
 }
