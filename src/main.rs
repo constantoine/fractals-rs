@@ -1,9 +1,8 @@
 use sdl2::event::Event;
 use sdl2::gfx::framerate::FPSManager;
 use sdl2::keyboard::Keycode;
-use sdl2::pixels::Color;
-use sdl2::rect::Point;
-
+use sdl2::pixels::{Color, PixelFormatEnum};
+use sdl2::render::Texture;
 use std::time::{Duration, Instant};
 
 #[derive(Copy, Clone)]
@@ -67,59 +66,59 @@ fn get_color_smooth(point: Complex, iteration: i32) -> Color {
     }
 }
 
-fn render(
-    x_size: i32,
-    y_size: i32,
-    scale: f64,
-    max_iterations: i32,
-    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-) {
-    canvas.clear();
+fn render(x_size: i32, y_size: i32, scale: f64, max_iterations: i32, texture: &mut Texture) {
     let scale: f64 = 1.0 / (y_size as f64 / 2.0) * scale;
-    for y in 0..y_size {
-        for x in 0..x_size {
-            let current: Complex = Complex {
-                real: (x - x_size / 2) as f64 * scale,
-                imaginary: (y - y_size / 2) as f64 * scale + 1.0,
-            };
+    texture
+        .with_lock(None, |buffer: &mut [u8], pitch: usize| {
+            for y in 0..y_size {
+                for x in 0..x_size {
+                    let offset = y as usize * pitch + x as usize * 3;
+                    let current: Complex = Complex {
+                        real: (x - x_size / 2) as f64 * scale,
+                        imaginary: (y - y_size / 2) as f64 * scale + 1.0,
+                    };
 
-            let (end_point, iteration) = compute_iterations(current, current, max_iterations);
-            let color;
-            if iteration == max_iterations {
-                color = Color {
-                    r: 0,
-                    b: 0,
-                    g: 0,
-                    a: 0,
-                };
-            } else {
-                color = get_color_smooth(end_point, iteration);
+                    let (end_point, iteration) =
+                        compute_iterations(current, current, max_iterations);
+                    let color;
+                    if iteration == max_iterations {
+                        color = Color {
+                            r: 0,
+                            b: 0,
+                            g: 0,
+                            a: 0,
+                        };
+                    } else {
+                        color = get_color_smooth(end_point, iteration);
+                    }
+                    buffer[offset] = color.r;
+                    buffer[offset + 1] = color.g;
+                    buffer[offset + 2] = color.b;
+                }
             }
-
-            // let color = get_color(iteration, max_iterations);
-
-            canvas.set_draw_color(color);
-            canvas
-                .draw_point(Point::new(x, y))
-                .expect("could not draw point");
-        }
-    }
-
-    canvas.present();
+        })
+        .expect("texture.withlock");
 }
 
 fn main() {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
+    let (x_size, y_size) = (256, 256);
+
     let window = video_subsystem
-        .window("fractal-rs", 900, 900)
+        .window("fractal-rs", x_size, y_size)
         .position_centered()
         .build()
         .expect("Could not build window");
 
     let mut canvas: sdl2::render::Canvas<sdl2::video::Window> =
-        window.into_canvas().build().unwrap();
+        window.into_canvas().software().build().unwrap();
+
+    let texture_creator = canvas.texture_creator();
+    let mut texture = texture_creator
+        .create_texture_streaming(PixelFormatEnum::RGB24, x_size, y_size)
+        .expect("cannot create texture");
 
     let mut event_pump = sdl_context
         .event_pump()
@@ -149,7 +148,13 @@ fn main() {
             break 'running;
         }
         let start = Instant::now();
-        render(900, 900, scale, 500, &mut canvas);
+        canvas.clear();
+        render(x_size as i32, y_size as i32, scale, 500, &mut texture);
+        canvas
+            .copy(&texture, None, None)
+            .expect("could not copy texture");
+        canvas.present();
+
         canvas
             .window()
             .surface(&event_pump)

@@ -11,4 +11,4 @@ gl = "0.14.0"
 
 [dependencies.sdl2]
 version = "0.36"
-features = ["gfx"]
+features = ["gfx", "image"]
