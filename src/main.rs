@@ -4,6 +4,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::render::Texture;
 use std::time::{Duration, Instant};
+use sdl2::rect::Rect;
 
 #[derive(Copy, Clone)]
 struct Complex {
@@ -66,45 +67,60 @@ fn get_color_smooth(point: Complex, iteration: i32) -> Color {
     }
 }
 
+fn partial_render(buf: &mut [u8], rect: Rect, x_size: i32, y_size: i32, scale: f64, pitch: usize, max_iterations: i32) {
+    for y in rect.y..(rect.y + rect.h) {
+        for x in rect.x..(rect.x + rect.w) {
+            let offset = (y - rect.y) as usize * pitch + x as usize * 3;
+            let current: Complex = Complex {
+                real: (x - x_size / 2) as f64 * scale,
+                imaginary: (y - y_size / 2) as f64 * scale + 1.0,
+            };
+
+            let (end_point, iteration) =
+                compute_iterations(current, current, max_iterations);
+            let color;
+            if iteration == max_iterations {
+                color = Color {
+                    r: 0,
+                    b: 0,
+                    g: 0,
+                    a: 0,
+                };
+            } else {
+                color = get_color_smooth(end_point, iteration);
+            }
+            buf[offset] = color.r;
+            buf[offset + 1] = color.g;
+            buf[offset + 2] = color.b;
+        }
+    }
+}
+
 fn render(x_size: i32, y_size: i32, scale: f64, max_iterations: i32, texture: &mut Texture) {
     let scale: f64 = 1.0 / (y_size as f64 / 2.0) * scale;
-    texture
-        .with_lock(None, |buffer: &mut [u8], pitch: usize| {
-            for y in 0..y_size {
-                for x in 0..x_size {
-                    let offset = y as usize * pitch + x as usize * 3;
-                    let current: Complex = Complex {
-                        real: (x - x_size / 2) as f64 * scale,
-                        imaginary: (y - y_size / 2) as f64 * scale + 1.0,
-                    };
+    let pitch = x_size * 3;
+    let buf_size = pitch * y_size;
 
-                    let (end_point, iteration) =
-                        compute_iterations(current, current, max_iterations);
-                    let color;
-                    if iteration == max_iterations {
-                        color = Color {
-                            r: 0,
-                            b: 0,
-                            g: 0,
-                            a: 0,
-                        };
-                    } else {
-                        color = get_color_smooth(end_point, iteration);
-                    }
-                    buffer[offset] = color.r;
-                    buffer[offset + 1] = color.g;
-                    buffer[offset + 2] = color.b;
-                }
-            }
-        })
-        .expect("texture.withlock");
+    let mut buf: Vec<u8> = vec![0; buf_size as usize];
+
+    let sub_buf = buf.chunks_mut((pitch * 64) as usize);
+
+    std::thread::scope(|s| {
+        for (i, e) in sub_buf.enumerate() {
+            s.spawn(move || {
+                partial_render(e, Rect::new(0, (i * 64) as i32, x_size as u32, 64), x_size, y_size, scale, pitch as usize, max_iterations);
+            });
+        }
+    });
+
+    texture.update(None, &buf, pitch as usize).expect("Could not update");
 }
 
 fn main() {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
-    let (x_size, y_size) = (256, 256);
+    let (x_size, y_size) = (1024, 1024);
 
     let window = video_subsystem
         .window("fractal-rs", x_size, y_size)
@@ -130,7 +146,7 @@ fn main() {
     let mut frame: i32 = 1;
 
     fps_manager
-        .set_framerate(60)
+        .set_framerate(200)
         .expect("could not set framerate");
 
     'running: loop {
@@ -149,7 +165,7 @@ fn main() {
         }
         let start = Instant::now();
         canvas.clear();
-        render(x_size as i32, y_size as i32, scale, 500, &mut texture);
+        render(x_size as i32, y_size as i32, scale, 1000, &mut texture);
         canvas
             .copy(&texture, None, None)
             .expect("could not copy texture");
@@ -159,7 +175,7 @@ fn main() {
             .window()
             .surface(&event_pump)
             .unwrap()
-            .save_bmp(format!("./{:?}.bmp", frame))
+            .save_bmp(format!("./render/{:?}.bmp", frame))
             .expect("TODO: panic message");
         let duration: Duration = start.elapsed();
         println!("Rendering time: {:?}; frame: {:?}", duration, frame);
